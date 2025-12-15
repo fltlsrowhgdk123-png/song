@@ -68,20 +68,6 @@ sp = spotipy.Spotify(
 DB_FILE = "emotion_music.db"
 
 # ======================
-# JSON 안전 파서 (핵심)
-# ======================
-def safe_json_loads(text):
-    try:
-        return json.loads(text)
-    except:
-        try:
-            start = text.index("{")
-            end = text.rindex("}") + 1
-            return json.loads(text[start:end])
-        except:
-            return None
-
-# ======================
 # DB
 # ======================
 def get_conn():
@@ -133,11 +119,11 @@ def load_emotion_logs():
     return df
 
 # ======================
-# GPT (입력 감정 분석 + 음악 추천)
+# GPT (감정 분석 + 음악 추천)
 # ======================
 def analyze_and_recommend(text):
     prompt = f"""
-반드시 JSON만 출력하라. 다른 설명 금지.
+반드시 JSON만 출력하라. 다른 설명은 절대 하지 마라.
 
 {{
   "emotion": "",
@@ -158,7 +144,7 @@ def analyze_and_recommend(text):
         messages=[{"role": "user", "content": prompt}],
         temperature=0.6
     )
-    return safe_json_loads(res.choices[0].message.content)
+    return json.loads(res.choices[0].message.content)
 
 # ======================
 # GPT (가사 요약)
@@ -205,7 +191,7 @@ def analyze_emotion_history(df):
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
-    return safe_json_loads(res.choices[0].message.content)
+    return json.loads(res.choices[0].message.content)
 
 # ======================
 # 링크
@@ -220,14 +206,14 @@ def youtube_url(title, artist):
     return f"https://www.youtube.com/results?search_query={q}"
 
 # ======================
-# 시각화
+# 시각화 (영어 고정)
 # ======================
 def plot_emotion_distribution(df):
     fig, ax = plt.subplots()
     df["emotion"].value_counts().plot(kind="bar", ax=ax)
-    ax.set_title("감정 분포")
-    ax.set_xlabel("감정")
-    ax.set_ylabel("횟수")
+    ax.set_title("Emotion Distribution")
+    ax.set_xlabel("Emotion")
+    ax.set_ylabel("Count")
     st.pyplot(fig)
 
 # ======================
@@ -250,10 +236,6 @@ run = st.button("분석 실행", use_container_width=True)
 
 if run and text.strip():
     result = analyze_and_recommend(text)
-
-    if result is None:
-        st.error("⚠️ 감정 분석에 실패했습니다. 다시 시도해주세요.")
-        st.stop()
 
     st.subheader("🎵 추천 음악")
 
@@ -280,8 +262,8 @@ if not df.empty:
     plot_emotion_distribution(df)
 
     analysis = analyze_emotion_history(df)
-    if analysis:
-        st.markdown(f"""
+
+    st.markdown(f"""
 <div class="highlight-card">
 <b>🧠 현재 심리 상태</b><br>
 {analysis["emotion"]}<br><br>
