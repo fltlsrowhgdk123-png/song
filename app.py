@@ -13,14 +13,11 @@ from spotipy.oauth2 import SpotifyClientCredentials
 # ======================
 # 한글 폰트 (Streamlit Cloud 대응)
 # ======================
-FONT_PATH = "NanumGothic.ttf"
-if os.path.exists(FONT_PATH):
-    font_prop = fm.FontProperties(fname=FONT_PATH)
-    plt.rcParams["font.family"] = font_prop.get_name()
-else:
-    plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["axes.unicode_minus"] = False
+FONT_PATH = "NanumGothic.ttf"  # 프로젝트 루트에 있으니까 이게 맞음
+font_prop = fm.FontProperties(fname=FONT_PATH)
 
+plt.rcParams["font.family"] = font_prop.get_name()
+plt.rcParams["axes.unicode_minus"] = False
 # ======================
 # UI 스타일
 # ======================
