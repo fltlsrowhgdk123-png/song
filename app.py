@@ -3,11 +3,23 @@ import pandas as pd
 import json, os, sqlite3
 from datetime import datetime
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import urllib.parse
 from openai import OpenAI
 from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
+
+# ======================
+# 한글 폰트 (Streamlit Cloud 대응)
+# ======================
+FONT_PATH = "NanumGothic.ttf"
+if os.path.exists(FONT_PATH):
+    font_prop = fm.FontProperties(fname=FONT_PATH)
+    plt.rcParams["font.family"] = font_prop.get_name()
+else:
+    plt.rcParams["font.family"] = "sans-serif"
+plt.rcParams["axes.unicode_minus"] = False
 
 # ======================
 # UI 스타일
@@ -45,12 +57,6 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
-
-# ======================
-# matplotlib (클라우드 안전)
-# ======================
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["axes.unicode_minus"] = False
 
 # ======================
 # 기본 설정
@@ -123,7 +129,7 @@ def load_emotion_logs():
 # ======================
 def analyze_and_recommend(text):
     prompt = f"""
-반드시 JSON만 출력하라. 다른 설명은 절대 하지 마라.
+반드시 JSON만 출력하라. 다른 설명 금지.
 
 {{
   "emotion": "",
@@ -206,14 +212,14 @@ def youtube_url(title, artist):
     return f"https://www.youtube.com/results?search_query={q}"
 
 # ======================
-# 시각화 (영어 고정)
+# 시각화 (한글 정상 출력)
 # ======================
 def plot_emotion_distribution(df):
     fig, ax = plt.subplots()
     df["emotion"].value_counts().plot(kind="bar", ax=ax)
-    ax.set_title("Emotion Distribution")
-    ax.set_xlabel("Emotion")
-    ax.set_ylabel("Count")
+    ax.set_title("감정 분포")
+    ax.set_xlabel("감정")
+    ax.set_ylabel("횟수")
     st.pyplot(fig)
 
 # ======================
