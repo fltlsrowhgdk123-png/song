@@ -1,0 +1,7 @@
+.env
+emotion_music.db
+__pycache__/
+venv/
+.venv/
+.cache/
+.idea/

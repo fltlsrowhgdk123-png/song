@@ -1,0 +1,282 @@
+import streamlit as st
+import pandas as pd
+import json, os, sqlite3
+from datetime import datetime
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import urllib.parse
+from openai import OpenAI
+from dotenv import load_dotenv
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+
+# ======================
+# 🌈 UI 스타일
+# ======================
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(135deg, #3e2723, #5d4037);
+}
+.block-container {
+    background: #fcfdff;
+    border-radius: 22px;
+    padding: 2.5rem;
+    margin-top: 2.5rem;
+    max-width: 900px;
+}
+.header-card {
+    background: linear-gradient(135deg, #a1887f, #8d6e63);
+    color: white;
+    padding: 2rem;
+    border-radius: 20px;
+    text-align: center;
+}
+.section-card {
+    background: white;
+    border-radius: 18px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.highlight-card {
+    background: #f3e5f5;
+    border-left: 6px solid #8d6e63;
+    padding: 1.2rem;
+    border-radius: 14px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ======================
+# 한글 폰트
+# ======================
+font_path = "C:/Windows/Fonts/malgun.ttf"
+if os.path.exists(font_path):
+    font_prop = fm.FontProperties(fname=font_path)
+    plt.rcParams["font.family"] = font_prop.get_name()
+plt.rcParams["axes.unicode_minus"] = False
+
+# ======================
+# 기본 설정
+# ======================
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+sp = spotipy.Spotify(
+    auth_manager=SpotifyClientCredentials(
+        client_id=os.getenv("SPOTIFY_CLIENT_ID"),
+        client_secret=os.getenv("SPOTIFY_CLIENT_SECRET")
+    )
+)
+
+DB_FILE = "emotion_music.db"
+
+# ======================
+# DB
+# ======================
+def get_conn():
+    return sqlite3.connect(DB_FILE)
+
+def init_db():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS logs (
+        datetime TEXT,
+        emotion TEXT,
+        summary TEXT,
+        solution TEXT,
+        kpop TEXT,
+        pop TEXT,
+        jpop TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+def save_log(result, songs):
+    while len(songs) < 3:
+        songs.append(None)
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO logs VALUES (?,?,?,?,?,?,?)",
+        (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            result["emotion"],
+            result["summary"],
+            result["solution"],
+            songs[0], songs[1], songs[2]
+        )
+    )
+    conn.commit()
+    conn.close()
+
+def load_emotion_logs():
+    conn = get_conn()
+    df = pd.read_sql(
+        "SELECT datetime, emotion FROM logs ORDER BY datetime DESC",
+        conn
+    )
+    conn.close()
+    return df
+
+# ======================
+# 링크
+# ======================
+def spotify_exists(title, artist):
+    q = f"track:{title} artist:{artist}"
+    r = sp.search(q=q, type="track", limit=1)
+    return len(r["tracks"]["items"]) > 0
+
+def youtube_url(title, artist):
+    q = urllib.parse.quote(f"{title} {artist}")
+    return f"https://www.youtube.com/results?search_query={q}"
+
+# ======================
+# GPT
+# ======================
+def analyze_and_recommend(text):
+    prompt = f"""
+반드시 JSON만 출력하라.
+
+{{
+  "emotion": "",
+  "summary": "",
+  "solution": "",
+  "songs": [
+    {{"type":"KPOP","title":"","artist":""}},
+    {{"type":"POP","title":"","artist":""}},
+    {{"type":"JPOP","title":"","artist":""}}
+  ]
+}}
+
+문장:
+{text}
+"""
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.6
+    )
+    return json.loads(res.choices[0].message.content)
+
+def summarize_lyrics(title, artist):
+    prompt = f"""
+노래 가사의 핵심 감정을 1문장,
+추천 이유를 1문장으로 설명하라.
+
+노래: {title}
+가수: {artist}
+"""
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.5
+    )
+    return res.choices[0].message.content.strip()
+
+# ======================
+# 시각화 + 심리 해석
+# ======================
+def plot_emotion_distribution(df):
+    fig, ax = plt.subplots()
+    counts = df["emotion"].value_counts()
+    counts.plot(kind="bar", ax=ax)
+    ax.set_title("감정 분포")
+    ax.set_xlabel("감정")
+    ax.set_ylabel("횟수")
+    st.pyplot(fig)
+
+    dominant = counts.idxmax()
+    advice = get_psychological_feedback(dominant, counts.sum())
+
+    st.markdown(f"""
+<div class="highlight-card">
+<b>🧠 현재 심리 상태 요약</b><br>
+지금까지의 기록을 보면 <b>{dominant}</b> 감정이 가장 자주 나타납니다.<br><br>
+<b>👉 이렇게 해보세요</b><br>
+{advice}
+</div>
+""", unsafe_allow_html=True)
+
+def get_psychological_feedback(emotion, total):
+    guide = {
+        "기쁨": "긍정 에너지가 높습니다. 이 흐름을 유지하기 위해 규칙적인 생활과 성취 기록을 남겨보세요.",
+        "행복": "정서적으로 안정적인 상태입니다. 사람들과의 교류를 늘리면 만족감이 더 커집니다.",
+        "불안": "긴장과 걱정이 누적된 상태입니다. 수면·호흡·가벼운 유산소 운동이 도움 됩니다.",
+        "슬픔": "정서적 회복이 필요한 시점입니다. 감정을 억누르지 말고 표현하거나 휴식 시간을 확보하세요.",
+        "분노": "스트레스가 외부로 향하고 있습니다. 즉각적인 반응보다 잠시 거리두기가 필요합니다.",
+        "지침": "에너지 소모가 큽니다. 목표를 줄이고 회복을 우선하세요."
+    }
+    return guide.get(
+        emotion,
+        "감정 패턴이 다양합니다. 생활 리듬을 점검하고 감정 기록을 계속 유지해 보세요."
+    )
+
+# ======================
+# UI
+# ======================
+st.set_page_config(page_title="감정 기반 음악 추천", layout="centered")
+init_db()
+
+st.markdown("""
+<div class="header-card">
+<h1>🎧 감정 기반 음악 추천</h1>
+<p>당신의 감정을 분석해 음악과 심리 방향을 제안합니다</p>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="section-card">✍️ 지금 감정을 적어보세요</div>', unsafe_allow_html=True)
+
+text = st.text_area(
+    "",
+    placeholder="예: 곧 방학이라 신난다!",
+    height=120,
+    label_visibility="collapsed"
+)
+
+run = st.button("분석 실행", use_container_width=True)
+
+if run and text.strip():
+    result = analyze_and_recommend(text)
+
+    st.markdown('<div class="highlight-card">', unsafe_allow_html=True)
+    st.subheader("🧠 감정 분석")
+    st.write(f"**감정:** {result['emotion']}")
+    st.write(result["summary"])
+    st.write(f"👉 {result['solution']}")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.subheader("🎵 추천 음악")
+
+    songs = []
+    for s in result["songs"]:
+        if spotify_exists(s["title"], s["artist"]):
+            songs.append(f"{s['title']} - {s['artist']}")
+
+    for song in songs:
+        title, artist = song.split(" - ", 1)
+        st.write(f"**{title}** / {artist}")
+        st.markdown(f"[▶ 유튜브에서 듣기]({youtube_url(title, artist)})")
+        st.caption(summarize_lyrics(title, artist))
+
+    save_log(result, songs)
+    st.success("기록 저장 완료")
+
+st.divider()
+st.subheader("📊 감정 기록")
+
+df = load_emotion_logs()
+if not df.empty:
+    st.dataframe(df)
+    plot_emotion_distribution(df)
+else:
+    st.info("아직 기록이 없습니다.")
+
+st.divider()
+st.caption(
+    "⚠️ 본 분석과 권장 사항은 참고용이며, "
+    "정확한 판단과 결정의 책임은 사용자 본인에게 있습니다."
+)
