@@ -13,7 +13,7 @@ from spotipy.oauth2 import SpotifyClientCredentials
 # ======================
 # 한글 폰트 (Streamlit Cloud 대응)
 # ======================
-FONT_PATH = "NanumGothic.ttf"  # 프로젝트 루트에 있으니까 이게 맞음
+FONT_PATH = os.path.join(os.path.dirname(__file__), "NanumGothic.ttf")
 font_prop = fm.FontProperties(fname=FONT_PATH)
 
 plt.rcParams["font.family"] = font_prop.get_name()
@@ -213,12 +213,21 @@ def youtube_url(title, artist):
 # ======================
 def plot_emotion_distribution(df):
     fig, ax = plt.subplots()
-    df["emotion"].value_counts().plot(kind="bar", ax=ax)
-    ax.set_title("감정 분포")
-    ax.set_xlabel("감정")
-    ax.set_ylabel("횟수")
-    st.pyplot(fig)
 
+    counts = df["emotion"].value_counts()
+    counts.plot(kind="bar", ax=ax)
+
+    ax.set_title("감정 분포", fontproperties=font_prop)
+    ax.set_xlabel("감정", fontproperties=font_prop)
+    ax.set_ylabel("횟수", fontproperties=font_prop)
+
+    # ⭐ 이게 핵심이다 (안 하면 □□□ 뜸)
+    for label in ax.get_xticklabels():
+        label.set_fontproperties(font_prop)
+    for label in ax.get_yticklabels():
+        label.set_fontproperties(font_prop)
+
+    st.pyplot(fig)
 # ======================
 # UI
 # ======================
