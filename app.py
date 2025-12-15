@@ -3,7 +3,6 @@ import pandas as pd
 import json, os, sqlite3
 from datetime import datetime
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
 import urllib.parse
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -48,12 +47,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ======================
-# 한글 폰트
+# matplotlib (클라우드 안전 설정)
 # ======================
-font_path = "C:/Windows/Fonts/malgun.ttf"
-if os.path.exists(font_path):
-    font_prop = fm.FontProperties(fname=font_path)
-    plt.rcParams["font.family"] = font_prop.get_name()
+plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["axes.unicode_minus"] = False
 
 # ======================
@@ -179,15 +175,15 @@ def analyze_emotion_history(df):
     prompt = f"""
 다음은 한 사용자의 감정 기록 통계다.
 
-감정 분포:
+Emotion distribution:
 {counts}
 
-이 데이터를 바탕으로 반드시 JSON만 출력하라.
+반드시 JSON만 출력하라.
 
 {{
-  "emotion": "현재 가장 지배적인 심리 상태",
-  "summary": "전반적인 감정 흐름 요약 (2문장 이내)",
-  "solution": "지금 상태에서 도움이 될 행동 조언 (2~3문장)"
+  "emotion": "dominant emotional state",
+  "summary": "overall emotional trend summary",
+  "solution": "recommended actions"
 }}
 """
     res = client.chat.completions.create(
@@ -210,36 +206,38 @@ def youtube_url(title, artist):
     return f"https://www.youtube.com/results?search_query={q}"
 
 # ======================
-# 시각화
+# 시각화 (한글 제거)
 # ======================
 def plot_emotion_distribution(df):
     fig, ax = plt.subplots()
     df["emotion"].value_counts().plot(kind="bar", ax=ax)
-    ax.set_title("감정 분포")
+    ax.set_title("Emotion Distribution")
+    ax.set_xlabel("Emotion")
+    ax.set_ylabel("Count")
     st.pyplot(fig)
 
 # ======================
 # UI
 # ======================
-st.set_page_config(page_title="감정 기반 음악 추천", layout="centered")
+st.set_page_config(page_title="Emotion-based Music Recommendation", layout="centered")
 init_db()
 
 st.markdown("""
 <div class="header-card">
-<h1>🎧 노래 상담소</h1>
-<p>감정 기록을 바탕으로 심리 상태를 분석합니다</p>
+<h1>🎧 Music Counseling</h1>
+<p>Analyze your emotional state through music</p>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="section-card">✍️ 지금 감정을 적어보세요</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-card">✍️ Write how you feel</div>', unsafe_allow_html=True)
 
 text = st.text_area("", height=120, label_visibility="collapsed")
-run = st.button("분석 실행", use_container_width=True)
+run = st.button("Analyze", use_container_width=True)
 
 if run and text.strip():
     result = analyze_and_recommend(text)
 
-    st.subheader("🎵 추천 음악")
+    st.subheader("🎵 Recommended Music")
 
     songs = []
     for s in result["songs"]:
@@ -249,14 +247,14 @@ if run and text.strip():
     for song in songs:
         title, artist = song.split(" - ", 1)
         st.markdown(f"### 🎶 {title} / {artist}")
-        st.markdown(f"[▶ 유튜브에서 듣기]({youtube_url(title, artist)})")
+        st.markdown(f"[▶ Listen on YouTube]({youtube_url(title, artist)})")
         st.caption(summarize_lyrics(title, artist))
 
     save_log(result, songs)
-    st.success("기록 저장 완료")
+    st.success("Saved successfully")
 
 st.divider()
-st.subheader("📊 감정 기록")
+st.subheader("📊 Emotion History")
 
 df = load_emotion_logs()
 if not df.empty:
@@ -267,20 +265,18 @@ if not df.empty:
 
     st.markdown(f"""
 <div class="highlight-card">
-<b>🧠 현재 심리 상태</b><br>
+<b>🧠 Current State</b><br>
 {analysis["emotion"]}<br><br>
-<b>📌 감정 요약</b><br>
+<b>📌 Summary</b><br>
 {analysis["summary"]}<br><br>
-<b>🧭 권장 행동</b><br>
+<b>🧭 Recommendation</b><br>
 {analysis["solution"]}
 </div>
 """, unsafe_allow_html=True)
-
 else:
-    st.info("아직 기록이 없습니다.")
+    st.info("No records yet.")
 
 st.divider()
 st.caption(
-    "⚠️ 본 분석과 권장 사항은 참고용이며, "
-    "정확한 판단과 결정의 책임은 사용자 본인에게 있습니다."
+    "⚠️ This analysis is for reference only. Final decisions are your responsibility."
 )
