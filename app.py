@@ -47,7 +47,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ======================
-# matplotlib (클라우드 안전 설정)
+# matplotlib (클라우드 안전)
 # ======================
 plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["axes.unicode_minus"] = False
@@ -66,6 +66,20 @@ sp = spotipy.Spotify(
 )
 
 DB_FILE = "emotion_music.db"
+
+# ======================
+# JSON 안전 파서 (핵심)
+# ======================
+def safe_json_loads(text):
+    try:
+        return json.loads(text)
+    except:
+        try:
+            start = text.index("{")
+            end = text.rindex("}") + 1
+            return json.loads(text[start:end])
+        except:
+            return None
 
 # ======================
 # DB
@@ -123,7 +137,7 @@ def load_emotion_logs():
 # ======================
 def analyze_and_recommend(text):
     prompt = f"""
-반드시 JSON만 출력하라.
+반드시 JSON만 출력하라. 다른 설명 금지.
 
 {{
   "emotion": "",
@@ -144,10 +158,10 @@ def analyze_and_recommend(text):
         messages=[{"role": "user", "content": prompt}],
         temperature=0.6
     )
-    return json.loads(res.choices[0].message.content)
+    return safe_json_loads(res.choices[0].message.content)
 
 # ======================
-# GPT (가사 의미 + 추천 이유)
+# GPT (가사 요약)
 # ======================
 def summarize_lyrics(title, artist):
     prompt = f"""
@@ -175,15 +189,15 @@ def analyze_emotion_history(df):
     prompt = f"""
 다음은 한 사용자의 감정 기록 통계다.
 
-Emotion distribution:
+감정 분포:
 {counts}
 
 반드시 JSON만 출력하라.
 
 {{
-  "emotion": "dominant emotional state",
-  "summary": "overall emotional trend summary",
-  "solution": "recommended actions"
+  "emotion": "현재 가장 지배적인 감정",
+  "summary": "전체 감정 흐름 요약 (2문장 이내)",
+  "solution": "지금 도움이 될 행동 조언 (2~3문장)"
 }}
 """
     res = client.chat.completions.create(
@@ -191,7 +205,7 @@ Emotion distribution:
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
-    return json.loads(res.choices[0].message.content)
+    return safe_json_loads(res.choices[0].message.content)
 
 # ======================
 # 링크
@@ -206,38 +220,42 @@ def youtube_url(title, artist):
     return f"https://www.youtube.com/results?search_query={q}"
 
 # ======================
-# 시각화 (한글 제거)
+# 시각화
 # ======================
 def plot_emotion_distribution(df):
     fig, ax = plt.subplots()
     df["emotion"].value_counts().plot(kind="bar", ax=ax)
-    ax.set_title("Emotion Distribution")
-    ax.set_xlabel("Emotion")
-    ax.set_ylabel("Count")
+    ax.set_title("감정 분포")
+    ax.set_xlabel("감정")
+    ax.set_ylabel("횟수")
     st.pyplot(fig)
 
 # ======================
 # UI
 # ======================
-st.set_page_config(page_title="Emotion-based Music Recommendation", layout="centered")
+st.set_page_config(page_title="감정 기반 음악 추천", layout="centered")
 init_db()
 
 st.markdown("""
 <div class="header-card">
-<h1>🎧 Music Counseling</h1>
-<p>Analyze your emotional state through music</p>
+<h1>🎧 노래 상담소</h1>
+<p>감정을 기록하고 음악으로 정리합니다</p>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="section-card">✍️ Write how you feel</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-card">✍️ 지금 감정을 적어보세요</div>', unsafe_allow_html=True)
 
 text = st.text_area("", height=120, label_visibility="collapsed")
-run = st.button("Analyze", use_container_width=True)
+run = st.button("분석 실행", use_container_width=True)
 
 if run and text.strip():
     result = analyze_and_recommend(text)
 
-    st.subheader("🎵 Recommended Music")
+    if result is None:
+        st.error("⚠️ 감정 분석에 실패했습니다. 다시 시도해주세요.")
+        st.stop()
+
+    st.subheader("🎵 추천 음악")
 
     songs = []
     for s in result["songs"]:
@@ -247,14 +265,14 @@ if run and text.strip():
     for song in songs:
         title, artist = song.split(" - ", 1)
         st.markdown(f"### 🎶 {title} / {artist}")
-        st.markdown(f"[▶ Listen on YouTube]({youtube_url(title, artist)})")
+        st.markdown(f"[▶ 유튜브에서 듣기]({youtube_url(title, artist)})")
         st.caption(summarize_lyrics(title, artist))
 
     save_log(result, songs)
-    st.success("Saved successfully")
+    st.success("기록 저장 완료")
 
 st.divider()
-st.subheader("📊 Emotion History")
+st.subheader("📊 감정 기록")
 
 df = load_emotion_logs()
 if not df.empty:
@@ -262,21 +280,21 @@ if not df.empty:
     plot_emotion_distribution(df)
 
     analysis = analyze_emotion_history(df)
-
-    st.markdown(f"""
+    if analysis:
+        st.markdown(f"""
 <div class="highlight-card">
-<b>🧠 Current State</b><br>
+<b>🧠 현재 심리 상태</b><br>
 {analysis["emotion"]}<br><br>
-<b>📌 Summary</b><br>
+<b>📌 감정 요약</b><br>
 {analysis["summary"]}<br><br>
-<b>🧭 Recommendation</b><br>
+<b>🧭 권장 행동</b><br>
 {analysis["solution"]}
 </div>
 """, unsafe_allow_html=True)
 else:
-    st.info("No records yet.")
+    st.info("아직 기록이 없습니다.")
 
 st.divider()
 st.caption(
-    "⚠️ This analysis is for reference only. Final decisions are your responsibility."
+    "⚠️ 본 분석과 권장 사항은 참고용이며, 판단과 결정의 책임은 사용자 본인에게 있습니다."
 )
