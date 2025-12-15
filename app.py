@@ -76,6 +76,13 @@ DB_FILE = "emotion_music.db"
 def get_conn():
     return sqlite3.connect(DB_FILE)
 
+def reset_logs():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM logs")
+    conn.commit()
+    conn.close()
+
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
@@ -287,6 +294,30 @@ if not df.empty:
 """, unsafe_allow_html=True)
 else:
     st.info("아직 기록이 없습니다.")
+
+st.divider()
+st.subheader("🗑️ 감정 기록 초기화")
+
+if "confirm_reset" not in st.session_state:
+    st.session_state.confirm_reset = False
+
+if not st.session_state.confirm_reset:
+    if st.button("⚠️ 감정 기록 초기화"):
+        st.session_state.confirm_reset = True
+else:
+    st.warning("정말 감정 기록을 초기화 하시겠습니까?")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("네"):
+            reset_logs()
+            st.session_state.confirm_reset = False
+            st.success("감정 기록이 모두 초기화되었습니다.")
+            st.rerun()
+
+    with col2:
+        if st.button("아니오"):
+            st.session_state.confirm_reset = False
 
 st.divider()
 st.caption(
